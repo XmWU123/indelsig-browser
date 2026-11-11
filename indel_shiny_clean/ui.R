@@ -12,6 +12,7 @@ source("ui_components/cosmic_tab.R")
 source("ui_components/search_tab.R")
 source("ui_components/about_tab.R")
 source("ui_components/476_tab.R")
+source("ui_components/feedback_tab.R")
 source("ui_components/analysis_tab.R") 
 source("ui_components/repertoire_tab.R")
 
@@ -35,7 +36,8 @@ ui <- navbarPage(
     style = paste0(
       "text-decoration:none !important;",
       "display:block !important;",
-      "cursor:pointer !important;"
+      "cursor:pointer !important;",
+      "overflow:visible !important;"
     ),
     
     tags$div(
@@ -51,13 +53,13 @@ ui <- navbarPage(
         src = "parallel_plots/indelsig_logo.png",
         
         style = paste0(
-          "width:320px !important;",
+          "width:300px !important;",
           "height:auto !important;",
           "max-width:none !important;",
           "max-height:none !important;",
           "display:block !important;",
           "vertical-align:middle !important;",
-          "transform:translate(-60px,-2px) !important;"
+          "transform:translate(-20px,-2px) !important;"
         )
       )
     )
@@ -78,6 +80,9 @@ ui <- navbarPage(
     useShinyjs()
   ),
   
+      
+      
+  
   create_home_tab(),
   create_analysis_tab(), 
   create_koh_tab(),
@@ -85,5 +90,6 @@ ui <- navbarPage(
   create_cosmic_tab(),
   create_repertoire_tab(),
   create_search_tab(),
-  create_about_tab()
+  create_about_tab(),
+  create_feedback_tab()
 )

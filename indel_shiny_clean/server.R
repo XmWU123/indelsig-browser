@@ -511,6 +511,26 @@ server <- function(input, output, session) {
     ignoreInit = TRUE
   )
   
+  observeEvent(
+    input$refresh_overview,
+    {
+      
+      current_repertoire_url(
+        static_page_url(
+          "overview_table.html"
+        )
+      )
+      
+      iframe_render_version(
+        isolate(
+          iframe_render_version()
+        ) + 1L
+      )
+      
+    },
+    ignoreInit = TRUE
+  )
+  
   # ==============================================================================
   # About page user feedback collection
   #
@@ -532,14 +552,6 @@ server <- function(input, output, session) {
       # -----------------------------
       # 1. 读取并清洗输入
       # -----------------------------
-      feedback_name <- trimws(
-        ifelse(
-          is.null(input$feedback_name),
-          "",
-          input$feedback_name
-        )
-      )
-      
       feedback_email <- trimws(
         ifelse(
           is.null(input$feedback_email),
@@ -653,7 +665,6 @@ server <- function(input, output, session) {
           "%Y-%m-%d %H:%M:%S %Z"
         ),
         
-        name = feedback_name,
         email = feedback_email,
         feedback_type = feedback_type,
         message = feedback_message,
@@ -718,12 +729,6 @@ server <- function(input, output, session) {
           )
           
           # 清空表单
-          updateTextInput(
-            session,
-            "feedback_name",
-            value = ""
-          )
-          
           updateTextInput(
             session,
             "feedback_email",
@@ -999,7 +1004,13 @@ server <- function(input, output, session) {
   # 2. 监听 示例样本 (hg38) 的点击
   observeEvent(input$load_example_hg38, {
     # 存入预设路径
-    current_vcf_path("/home/wuxueming/shinyapp/indel-signature-browser/example_data/test_file_1_hg38.vcf")
+    current_vcf_path(
+      file.path(
+        getwd(),
+        "example_data",
+        "test_file_1_hg38.vcf"
+      )
+    )
     
     # 自动切换下拉菜单到 hg38
     updateSelectInput(session, "ref_genome", selected = "hg38")
@@ -1014,7 +1025,13 @@ server <- function(input, output, session) {
   # 3. 监听 示例样本 (hg19) 的点击
   observeEvent(input$load_example_hg37, {
     # 存入预设路径
-    current_vcf_path("/home/wuxueming/shinyapp/indel-signature-browser/example_data/test_file_2_hg19.vcf")
+    current_vcf_path(
+      file.path(
+        getwd(),
+        "example_data",
+        "test_file_2_hg19.vcf"
+      )
+    )
     
     # 自动切换下拉菜单到 hg19
     updateSelectInput(session, "ref_genome", selected = "hg19")
@@ -1272,21 +1289,193 @@ server <- function(input, output, session) {
   
   # 2. 矩阵下载处理逻辑 (只打包三个矩阵)
   output$download_matrices <- downloadHandler(
+    
     filename = function() {
-      paste0("Indel_Matrices_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".zip")
+      paste0(
+        "Indel_Matrices_",
+        format(Sys.time(), "%Y%m%d_%H%M%S"),
+        ".zip"
+      )
     },
+    
     content = function(file) {
-      temp_dir <- tempdir()
-      old_wd <- setwd(temp_dir)
-      on.exit(setwd(old_wd)) 
       
-      write.csv(as.data.frame(vcf_results$cat83), "ID83_matrix.csv", row.names = TRUE)
-      write.csv(as.data.frame(vcf_results$cat89), "ID89_matrix.csv", row.names = TRUE)
-      write.csv(as.data.frame(vcf_results$cat476), "ID476_matrix.csv", row.names = TRUE)
+      req(
+        vcf_results$cat83,
+        vcf_results$cat89,
+        vcf_results$cat476
+      )
       
-      utils::zip(zipfile = file, 
-                 files = c("ID83_matrix.csv", "ID89_matrix.csv", "ID476_matrix.csv"))
+      # 每次下载创建独立临时目录
+      # 防止多个用户同时下载时文件互相覆盖
+      work_dir <- tempfile(
+        pattern = "indel_matrix_download_"
+      )
+      
+      dir.create(
+        work_dir,
+        recursive = TRUE,
+        showWarnings = FALSE
+      )
+      
+      if (!dir.exists(work_dir)) {
+        stop(
+          "Unable to create temporary directory: ",
+          work_dir
+        )
+      }
+      
+      # 下载结束后删除临时文件
+      on.exit(
+        unlink(
+          work_dir,
+          recursive = TRUE,
+          force = TRUE
+        ),
+        add = TRUE
+      )
+      
+      # 三个CSV的完整路径
+      csv_paths <- c(
+        file.path(work_dir, "ID83_matrix.csv"),
+        file.path(work_dir, "ID89_matrix.csv"),
+        file.path(work_dir, "ID476_matrix.csv")
+      )
+      
+      # 写出矩阵
+      write.csv(
+        as.data.frame(vcf_results$cat83),
+        file = csv_paths[1],
+        row.names = TRUE
+      )
+      
+      write.csv(
+        as.data.frame(vcf_results$cat89),
+        file = csv_paths[2],
+        row.names = TRUE
+      )
+      
+      write.csv(
+        as.data.frame(vcf_results$cat476),
+        file = csv_paths[3],
+        row.names = TRUE
+      )
+      
+      # 检查CSV是否成功生成
+      missing_csv <- csv_paths[
+        !file.exists(csv_paths)
+      ]
+      
+      if (length(missing_csv) > 0) {
+        stop(
+          "The following matrix files were not generated: ",
+          paste(
+            basename(missing_csv),
+            collapse = ", "
+          )
+        )
+      }
+      
+      # 必须创建一个明确带有.zip后缀的真实压缩文件
+      real_zip_path <- file.path(
+        work_dir,
+        "Indel_Matrices.zip"
+      )
+      
+      message(
+        "[Matrix download] Creating ZIP: ",
+        real_zip_path
+      )
+      
+      # -j：ZIP内部只保留文件名，不保留临时目录路径
+      zip_status <- utils::zip(
+        zipfile = real_zip_path,
+        files = csv_paths,
+        flags = "-j9X",
+        zip = "/usr/bin/zip"
+      )
+      
+      message(
+        "[Matrix download] ZIP status: ",
+        zip_status
+      )
+      
+      # 检查zip命令返回状态
+      if (
+        !is.null(zip_status) &&
+        length(zip_status) == 1 &&
+        !is.na(zip_status) &&
+        zip_status != 0
+      ) {
+        stop(
+          "ZIP command failed with status: ",
+          zip_status
+        )
+      }
+      
+      # 检查真实ZIP文件
+      if (!file.exists(real_zip_path)) {
+        stop(
+          "ZIP file was not generated: ",
+          real_zip_path
+        )
+      }
+      
+      zip_size <- file.info(real_zip_path)$size
+      
+      if (
+        is.na(zip_size) ||
+        zip_size <= 0
+      ) {
+        stop(
+          "The generated ZIP file is empty."
+        )
+      }
+      
+      message(
+        "[Matrix download] ZIP generated successfully; size = ",
+        zip_size,
+        " bytes"
+      )
+      
+      # 把真实ZIP复制到Shiny要求的输出路径
+      # Shiny最终只会把参数file对应的文件发送给浏览器
+      if (file.exists(file)) {
+        unlink(file)
+      }
+      
+      copy_success <- file.copy(
+        from = real_zip_path,
+        to = file,
+        overwrite = TRUE
+      )
+      
+      if (!isTRUE(copy_success)) {
+        stop(
+          "Unable to copy ZIP archive to the Shiny download path."
+        )
+      }
+      
+      # 最终检查Shiny输出文件
+      if (
+        !file.exists(file) ||
+        is.na(file.info(file)$size) ||
+        file.info(file)$size <= 0
+      ) {
+        stop(
+          "Final Shiny download file was not generated correctly."
+        )
+      }
+      
+      message(
+        "[Matrix download] File ready for browser: ",
+        file,
+        "; size = ",
+        file.info(file)$size,
+        " bytes"
+      )
     },
+    
     contentType = "application/zip"
   )
   
@@ -1744,7 +1933,7 @@ server <- function(input, output, session) {
           "font-weight:700;",
           "margin-top:0;",
           "margin-bottom:20px;",
-          "font-size:1.2rem;"
+          "font-size:1.85rem;"
         )
       ),
       
@@ -1803,15 +1992,15 @@ server <- function(input, output, session) {
             style = paste0(
               "cursor:pointer;",
               "color:#3498db;",
-              "font-weight:500;",
-              "font-size:1.35rem;",
+              "font-weight:650;",
+              "font-size:1.55rem;",
               "outline:none;",
               "user-select:none;"
             ),
             
             icon(
               "chevron-circle-right",
-              style = "color:#27ae60; margin-right:8px;"
+              style = "color:#27ae60; margin-right:8px;font-size:1.55em;"
             ),
             
             paste(
@@ -4365,27 +4554,1160 @@ server <- function(input, output, session) {
   # 保留原始overview_table.html中的完整表格内容，不重新构造字段。
   # ==============================================================================
   
+  # ==============================================================================
+  # Overview Table 表头说明气泡
+  #
+  # Overview Table 位于同源 iframe 中。
+  # iframe 加载完成后，父页面为15个正式表头绑定鼠标悬浮说明。
+  # ==============================================================================
+  
+  overview_header_titles <- c(
+    "89/476-Type Classification Signature ID",
+    "Cosine vs Extracted 476-Type Sig Collapsed to 89-Type",
+    "Linking Tumor",
+    "Cosine 89-Type Sig vs BestMatch89 Spectrum",
+    "Closest Koh et al. Sig",
+    "Cosine 89-Type Sig vs Koh et al.",
+    "Cosine 476-Type Sig vs BestMatch476 Spectrum",
+    "Cosine 476-Type Sig vs BestMatch89 476-Spectrum",
+    "Extracted 83-Type Sig ID",
+    "Cosine 83-Type Sig vs BestMatch83 Spectrum",
+    "Cosine 83-Type Sig vs BestMatch89 83-Spectrum",
+    "Closest COSMIC Sig ID",
+    "Cosine vs COSMIC Sig",
+    "Closest Jin et al. Sig",
+    "Cosine vs Jin et al."
+  )
+  
+  overview_header_explanations <- c(
+    "ID of the corresponding 89-/476-type indel signature.",
+    "Cosine similarity between the extracted 89-type signature and the 89-type signature obtained by collapsing the extracted 476-type signature.",
+    "Tumor sample with a high contribution from the signature, used to link the corresponding 83-, 89-, and 476-type signatures.",
+    "Cosine similarity between the 89-type signature and the 89-type indel spectrum of the linking tumor.",
+    "Signature reported by Koh et al. that is most similar to the 89-type signature.",
+    "Cosine similarity between the 89-type signature and its closest matching signature reported by Koh et al.",
+    "Cosine similarity between the 476-type signature and its closest matching 476-type indel spectrum.",
+    "Cosine similarity between the 476-type signature and the 476-type indel spectrum of the linking tumor.",
+    "ID of the corresponding extracted 83-type signature.",
+    "Cosine similarity between the 83-type signature and its closest matching 83-type indel spectrum.",
+    "Cosine similarity between the 83-type signature and the 83-type indel spectrum of the linking tumor.",
+    "ID of the COSMIC v3.6 signature that is most similar to the 83-type signature.",
+    "Cosine similarity between the 83-type signature and its closest matching COSMIC v3.6 signature.",
+    "Signature reported by Jin et al. that is most similar to the 83-type signature.",
+    "Cosine similarity between the 83-type signature and its closest matching signature reported by Jin et al."
+  )
+  
+  overview_header_titles_json <- as.character(
+    jsonlite::toJSON(
+      overview_header_titles,
+      auto_unbox = FALSE
+    )
+  )
+  
+  overview_header_explanations_json <- as.character(
+    jsonlite::toJSON(
+      overview_header_explanations,
+      auto_unbox = FALSE
+    )
+  )
+  
+  overview_tooltip_javascript <- paste0(
+    r"(
+    (function() {
+
+      var overviewHeaderTitles = )",
+    overview_header_titles_json,
+    r"(;
+
+      var overviewHeaderExplanations = )",
+    overview_header_explanations_json,
+    r"(;
+
+      window.installOverviewHeaderTooltips = function(frameId) {
+
+        var frame = document.getElementById(frameId);
+
+        if (!frame) {
+          return;
+        }
+
+        try {
+
+          var frameWindow = frame.contentWindow;
+          var frameDocument =
+            frame.contentDocument ||
+            frameWindow.document;
+
+          if (!frameWindow || !frameDocument) {
+            return;
+          }
+
+          var currentPath =
+            frameWindow.location.pathname || '';
+
+          /*
+            只处理 overview_table.html。
+            独立signature报告不添加表头气泡。
+          */
+          if (!/overview_table\.html$/i.test(currentPath)) {
+            return;
+          }
+
+          /*
+            将气泡CSS写入iframe内部。
+          */
+          if (
+            !frameDocument.getElementById(
+              'overview-header-tooltip-style'
+            )
+          ) {
+
+            var styleElement =
+              frameDocument.createElement('style');
+
+            styleElement.id =
+              'overview-header-tooltip-style';
+
+            styleElement.textContent = `
+              #overview-header-tooltip {
+                position: fixed;
+                display: none;
+                visibility: hidden;
+
+                width: max-content;
+                max-width: min(390px, calc(100vw - 24px));
+
+                padding: 11px 13px;
+
+                background: rgba(36, 52, 68, 0.98);
+                color: #ffffff;
+
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                border-radius: 9px;
+
+                box-shadow:
+                  0 8px 24px rgba(0, 0, 0, 0.24);
+
+                font-family:
+                  Arial,
+                  Helvetica,
+                  sans-serif;
+
+                font-size: 13px;
+                line-height: 1.45;
+                text-align: left;
+                white-space: normal;
+
+                pointer-events: none;
+                z-index: 2147483647;
+              }
+
+              #overview-header-tooltip
+              .overview-tooltip-title {
+                margin: 0 0 5px 0;
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 700;
+                line-height: 1.3;
+              }
+
+              #overview-header-tooltip
+              .overview-tooltip-text {
+                margin: 0;
+                color: #f2f5f7;
+                font-size: 13px;
+                font-weight: 400;
+                line-height: 1.45;
+              }
+
+              table.dataTable thead th[
+                data-overview-tooltip='true'
+              ] {
+                cursor: help;
+              }
+            `;
+
+            (
+              frameDocument.head ||
+              frameDocument.documentElement
+            ).appendChild(styleElement);
+          }
+
+          /*
+            所有表头共用一个气泡DOM。
+          */
+          var tooltip =
+            frameDocument.getElementById(
+              'overview-header-tooltip'
+            );
+
+          if (!tooltip) {
+
+            tooltip =
+              frameDocument.createElement('div');
+
+            tooltip.id =
+              'overview-header-tooltip';
+
+            tooltip.setAttribute(
+              'role',
+              'tooltip'
+            );
+
+            frameDocument.body.appendChild(
+              tooltip
+            );
+          }
+
+          var hideTooltip = function() {
+
+            tooltip.style.display = 'none';
+            tooltip.style.visibility = 'hidden';
+          };
+
+          var positionTooltip = function(event) {
+
+            if (
+              tooltip.style.display === 'none'
+            ) {
+              return;
+            }
+
+            var gap = 14;
+
+            var viewportWidth =
+              frameDocument.documentElement.clientWidth;
+
+            var viewportHeight =
+              frameDocument.documentElement.clientHeight;
+
+            var tooltipRect =
+              tooltip.getBoundingClientRect();
+
+            var left =
+              event.clientX + gap;
+
+            var top =
+              event.clientY + gap;
+
+            if (
+              left + tooltipRect.width >
+              viewportWidth - 8
+            ) {
+              left =
+                event.clientX -
+                tooltipRect.width -
+                gap;
+            }
+
+            if (
+              top + tooltipRect.height >
+              viewportHeight - 8
+            ) {
+              top =
+                event.clientY -
+                tooltipRect.height -
+                gap;
+            }
+
+            left = Math.max(
+              8,
+              Math.min(
+                left,
+                viewportWidth -
+                  tooltipRect.width -
+                  8
+              )
+            );
+
+            top = Math.max(
+              8,
+              Math.min(
+                top,
+                viewportHeight -
+                  tooltipRect.height -
+                  8
+              )
+            );
+
+            tooltip.style.left =
+              left + 'px';
+
+            tooltip.style.top =
+              top + 'px';
+          };
+
+          var showTooltip = function(
+            event,
+            headerIndex
+          ) {
+
+            var title =
+              overviewHeaderTitles[
+                headerIndex
+              ];
+
+            var explanation =
+              overviewHeaderExplanations[
+                headerIndex
+              ];
+
+            if (!title || !explanation) {
+              return;
+            }
+
+            tooltip.textContent = '';
+
+            var titleElement =
+              frameDocument.createElement('div');
+
+            titleElement.className =
+              'overview-tooltip-title';
+
+            titleElement.textContent =
+              title;
+
+            var textElement =
+              frameDocument.createElement('div');
+
+            textElement.className =
+              'overview-tooltip-text';
+
+            textElement.textContent =
+              explanation;
+
+            tooltip.appendChild(
+              titleElement
+            );
+
+            tooltip.appendChild(
+              textElement
+            );
+
+            tooltip.style.display = 'block';
+            tooltip.style.visibility = 'hidden';
+
+            positionTooltip(event);
+
+            tooltip.style.visibility = 'visible';
+          };
+
+          /*
+            scrollX可能复制表头。
+            给所有含15列表头、且不含筛选框的表头行绑定气泡。
+          */
+          var bindHeaderTooltips = function() {
+
+            var headerRows =
+              frameDocument.querySelectorAll(
+                'table.dataTable thead tr'
+              );
+
+            headerRows.forEach(
+              function(headerRow) {
+
+                if (
+                  headerRow.querySelector(
+                    'input, select, textarea'
+                  )
+                ) {
+                  return;
+                }
+
+                var headers =
+                  Array.prototype.slice.call(
+                    headerRow.querySelectorAll('th')
+                  );
+
+                if (headers.length < 15) {
+                  return;
+                }
+
+                headers
+                  .slice(0, 15)
+                  .forEach(
+                    function(
+                      header,
+                      headerIndex
+                    ) {
+
+                      if (
+                        header.getAttribute(
+                          'data-overview-tooltip'
+                        ) !== 'true'
+                      ) {
+                        header.setAttribute(
+                          'data-overview-tooltip',
+                          'true'
+                        );
+                      }
+
+                      header.setAttribute(
+                        'aria-description',
+                        overviewHeaderExplanations[
+                          headerIndex
+                        ]
+                      );
+
+                      if (
+                        header.dataset
+                          .overviewTooltipBound === '1'
+                      ) {
+                        return;
+                      }
+
+                      header.dataset
+                        .overviewTooltipBound = '1';
+
+                      header.addEventListener(
+                        'mouseenter',
+                        function(event) {
+                          showTooltip(
+                            event,
+                            headerIndex
+                          );
+                        }
+                      );
+
+                      header.addEventListener(
+                        'mousemove',
+                        positionTooltip
+                      );
+
+                      header.addEventListener(
+                        'mouseleave',
+                        hideTooltip
+                      );
+                    }
+                  );
+              }
+            );
+          };
+
+          bindHeaderTooltips();
+
+          /*
+            排序、筛选或重算列宽后，如果DataTables重建表头，
+            自动为新表头重新绑定气泡。
+          */
+          if (
+            !frameDocument
+              .__overviewHeaderTooltipObserver
+          ) {
+
+            var observer =
+              new frameWindow.MutationObserver(
+                function() {
+                  bindHeaderTooltips();
+                }
+              );
+
+            observer.observe(
+              frameDocument.body,
+              {
+                childList: true,
+                subtree: true
+              }
+            );
+
+            frameDocument
+              .__overviewHeaderTooltipObserver =
+                observer;
+          }
+
+        } catch (error) {
+
+          console.warn(
+            'Unable to install Overview header tooltips:',
+            error
+          );
+        }
+      };
+
+    })();
+    )"
+  )
+  
   output$dynamic_repertoire_iframe <- renderUI({
     
-    # URL或版本变化时重新生成iframe
     iframe_render_version()
     
-    tags$iframe(
-      id = "repertoire_iframe",
+    # 当前 iframe 实际加载的 URL
+    iframe_url <- current_repertoire_url()
+    
+    # 判断当前显示的是 Overview Table，
+    # 还是 InsDel1a.html 等独立 signature 详情报告
+    is_overview_page <- grepl(
+      "overview_table\\.html(?:\\?|$)",
+      iframe_url,
+      ignore.case = TRUE
+    )
+    
+    # ==========================================================================
+    # 关键修复
+    #
+    # 不再把独立详情页 iframe 自动撑到内容总高度。
+    #
+    # 原因：
+    # 主 Shiny 页面本身的布局可能限制外层页面继续增长。
+    # 之前把详情页内部设为 overflow-y:visible 后，
+    # iframe 内部没有滚动条，而父页面又无法继续向下滚动，
+    # 所以看起来始终“滑不动”。
+    #
+    # 现在改为：
+    # 1. 独立详情页 iframe 保持固定视口高度；
+    # 2. iframe 内部强制使用纵向滚动；
+    # 3. Overview Table 仍保持原来的 DataTables 显示方式。
+    # ==========================================================================
+    
+    iframe_onload <- r"(
+      (function() {
+
+        var frame =
+          document.getElementById('repertoire_iframe');
+
+        if (!frame) {
+          return;
+        }
+
+        var shell = frame.parentElement;
+
+        var setImportant = function(
+          element,
+          propertyName,
+          propertyValue
+        ) {
+
+          if (!element) {
+            return;
+          }
+
+          element.style.setProperty(
+            propertyName,
+            propertyValue,
+            'important'
+          );
+        };
+
+
+        var applyCurrentFrameMode = function(
+          resetScroll
+        ) {
+
+          try {
+
+            var frameWindow =
+              frame.contentWindow;
+
+            var frameDocument =
+              frame.contentDocument ||
+              frameWindow.document;
+
+            if (
+              !frameWindow ||
+              !frameDocument
+            ) {
+              return;
+            }
+
+            /*
+              关键：
+
+              不再使用R里的current_repertoire_url判断。
+
+              每次iframe加载完成后，直接读取iframe内部
+              当前真实页面地址。
+            */
+            var currentPath =
+              frameWindow.location.pathname || '';
+
+            var isActualOverview =
+              /overview_table\.html$/i.test(
+                currentPath
+              );
+
+
+            /*
+              ==================================================
+              当前真实页面是 Overview Table
+              ==================================================
+            */
+            if (isActualOverview) {
+
+              if (shell) {
+
+                shell.classList.remove(
+                  'detail-page-mode'
+                );
+
+                shell.classList.add(
+                  'overview-page-mode'
+                );
+
+                shell.style.removeProperty(
+                  'height'
+                );
+
+                shell.style.removeProperty(
+                  'min-height'
+                );
+
+                shell.style.removeProperty(
+                  'max-height'
+                );
+              }
+
+              frame.removeAttribute(
+                'scrolling'
+              );
+
+              frame.setAttribute(
+                'scrolling',
+                'yes'
+              );
+
+              setImportant(
+                frame,
+                'height',
+                'calc(100vh - 160px)'
+              );
+
+              setImportant(
+                frame,
+                'min-height',
+                '420px'
+              );
+
+              setImportant(
+                frame,
+                'max-height',
+                'none'
+              );
+
+              setImportant(
+  frame,
+  'overflow-x',
+  'hidden'
+);
+
+setImportant(
+  frame,
+  'overflow-y',
+  'auto'
+);
+
+              /*
+                只在Overview Table中安装表头气泡。
+              */
+              if (
+                typeof window
+                  .installOverviewHeaderTooltips
+                === 'function'
+              ) {
+
+                window
+                  .installOverviewHeaderTooltips(
+                    'repertoire_iframe'
+                  );
+              }
+
+              /*
+                Overview Table 横向滚动修复：
+                DataTables 生成的宽表需要在 iframe 内部滚动。
+              */
+              var overviewFixStyle =
+                frameDocument.getElementById(
+                  'indelsig-overview-table-fix'
+                );
+
+              if (overviewFixStyle) {
+                overviewFixStyle.remove();
+              }
+
+              overviewFixStyle =
+                frameDocument.createElement(
+                  'style'
+                );
+
+              overviewFixStyle.id =
+                'indelsig-overview-table-fix';
+
+              overviewFixStyle.textContent = `
+                html,
+                body {
+                  width:100% !important;
+                  min-width:100% !important;
+                  overflow-x:auto !important;
+                  overflow-y:auto !important;
+                }
+
+                .dataTables_wrapper {
+                  width:100% !important;
+                  min-width:100% !important;
+                  overflow:visible !important
+                }
+
+                table.dataTable {
+                 white-space:nowrap !important;
+               }
+
+               .dataTables_scroll {
+                 width:100% !important;
+                 overflow:visible !important;
+               }
+
+
+              .dataTables_scrollBody {
+                overflow-x:auto !important;
+                overflow-y:auto !important;
+              }
+
+              (
+                frameDocument.head ||
+                frameDocument.documentElement
+              ).appendChild(
+                overviewFixStyle
+              );
+
+              var dtWrapper =
+                frameDocument.querySelector(
+                  '.dataTables_wrapper'
+                );
+
+              if (dtWrapper) {
+                dtWrapper.style.setProperty(
+                  'overflow-x',
+                  'auto',
+                  'important'
+                );
+
+                dtWrapper.style.setProperty(
+                  'overflow-y',
+                  'hidden',
+                  'important'
+                );
+
+              }
+
+              return;
+            }
+
+
+            /*
+              ==================================================
+              当前真实页面是独立 signature 详情页
+              ==================================================
+            */
+            if (shell) {
+
+              shell.classList.remove(
+                'overview-page-mode'
+              );
+
+              shell.classList.add(
+                'detail-page-mode'
+              );
+            }
+
+            /*
+              关键：解除Overview时期的 scrolling=no。
+            */
+            frame.removeAttribute(
+              'scrolling'
+            );
+
+            frame.setAttribute(
+              'scrolling',
+              'yes'
+            );
+
+            setImportant(
+              frame,
+              'overflow-x',
+              'hidden'
+            );
+
+            setImportant(
+              frame,
+              'overflow-y',
+              'hidden'
+            );
+
+            setImportant(
+              frame,
+              'max-height',
+              '100%'
+            );
+
+            setImportant(
+              frame,
+              'overflow-x',
+              'hidden'
+            );
+
+            setImportant(
+              frame,
+              'overflow-y',
+              'auto'
+            );
+
+
+            /*
+              给独立详情页写入滚动CSS。
+            */
+            var oldStyle =
+              frameDocument.getElementById(
+                'indelsig-detail-scroll-fix'
+              );
+
+            if (oldStyle) {
+              oldStyle.remove();
+            }
+
+            var styleElement =
+              frameDocument.createElement(
+                'style'
+              );
+
+            styleElement.id =
+              'indelsig-detail-scroll-fix';
+
+            styleElement.textContent = `
+              html {
+                height: 100% !important;
+                min-height: 100% !important;
+                max-height: none !important;
+
+                overflow-x: hidden !important;
+                overflow-y: auto !important;
+
+                position: static !important;
+                scroll-behavior: auto !important;
+                scrollbar-gutter: stable;
+              }
+
+              body {
+                height: auto !important;
+                min-height: 100% !important;
+                max-height: none !important;
+
+                overflow-x: hidden !important;
+                overflow-y: visible !important;
+
+                position: static !important;
+
+                margin: 0 !important;
+                padding-bottom: 60px !important;
+              }
+            `;
+
+            (
+              frameDocument.head ||
+              frameDocument.documentElement
+            ).appendChild(
+              styleElement
+            );
+
+
+            /*
+              再使用行内important覆盖详情HTML原来的样式。
+            */
+            if (
+              frameDocument.documentElement
+            ) {
+
+              setImportant(
+                frameDocument.documentElement,
+                'height',
+                '100%'
+              );
+
+              setImportant(
+                frameDocument.documentElement,
+                'min-height',
+                '100%'
+              );
+
+              setImportant(
+                frameDocument.documentElement,
+                'max-height',
+                'none'
+              );
+
+              setImportant(
+                frameDocument.documentElement,
+                'overflow-x',
+                'hidden'
+              );
+
+              setImportant(
+                frameDocument.documentElement,
+                'overflow-y',
+                'auto'
+              );
+
+              setImportant(
+                frameDocument.documentElement,
+                'position',
+                'static'
+              );
+            }
+
+
+            if (frameDocument.body) {
+
+              setImportant(
+                frameDocument.body,
+                'height',
+                'auto'
+              );
+
+              setImportant(
+                frameDocument.body,
+                'min-height',
+                '100%'
+              );
+
+              setImportant(
+                frameDocument.body,
+                'max-height',
+                'none'
+              );
+
+              setImportant(
+                frameDocument.body,
+                'overflow-x',
+                'hidden'
+              );
+
+              setImportant(
+                frameDocument.body,
+                'overflow-y',
+                'visible'
+              );
+
+              setImportant(
+                frameDocument.body,
+                'position',
+                'static'
+              );
+            }
+
+
+            /*
+              让鼠标滚轮和方向键进入iframe详情页。
+            */
+            frame.setAttribute(
+              'tabindex',
+              '0'
+            );
+
+            frame.onmouseenter =
+              function() {
+
+                try {
+                  frameWindow.focus();
+                } catch (error) {
+                }
+              };
+
+
+            /*
+              只在页面刚完成跳转时返回顶部。
+
+              后续重复修复不能再次scrollTo(0,0)，
+              否则用户刚向下滚动又会被拉回顶部。
+            */
+            if (resetScroll) {
+
+              var scrollingElement =
+                frameDocument.scrollingElement ||
+                frameDocument.documentElement;
+
+              if (scrollingElement) {
+                scrollingElement.scrollTop = 0;
+              }
+
+              frameWindow.scrollTo(
+                0,
+                0
+              );
+            }
+
+          } catch (error) {
+
+            console.warn(
+              'Unable to update repertoire iframe mode:',
+              error
+            );
+          }
+        };
+
+
+        /*
+          iframe的onload不仅会在首次打开Overview时运行，
+          点击Overview中的signature链接后也会再次运行。
+
+          因此每次都根据iframe当前真实URL重新判断模式。
+        */
+        applyCurrentFrameMode(
+          true
+        );
+
+        setTimeout(
+          function() {
+            applyCurrentFrameMode(false);
+          },
+          100
+        );
+
+        setTimeout(
+          function() {
+            applyCurrentFrameMode(false);
+          },
+          500
+        );
+
+        setTimeout(
+          function() {
+            applyCurrentFrameMode(false);
+          },
+          1200
+        );
+
+      })();
+    )"
+    
+    tagList(
       
-      src = current_repertoire_url(),
+      tags$style(
+        HTML(
+          "
+          /*
+            桌面端：
+            白色 HTML 区域占浏览器宽度的 94%，
+            左右各保留约 3% 的灰色背景。
+          */
+          .overview-iframe-shell {
+            display: block;
+
+            width: 94vw !important;
+            max-width: 94vw !important;
+
+            position: relative;
+            left: 50%;
+            transform: translateX(-50%);
+
+            margin: 0 !important;
+            padding: 0 !important;
+
+            background: #ffffff !important;
+            box-sizing: border-box !important;
+          }
+
+          /*
+            Overview Table：
+            表格内部由 DataTables 管理显示。
+          */
+          .overview-iframe-shell.overview-page-mode {
+            overflow-x:auto !important;
+            overflow-y:auto !important;
+        }
+          /*
+            独立详情页：
+            shell 固定为当前浏览器剩余高度，
+            真正的上下滚动发生在 iframe 内部。
+          */
+          .overview-iframe-shell.detail-page-mode {
+            height: calc(100vh - 160px) !important;
+            min-height: 420px !important;
+            max-height: calc(100vh - 160px) !important;
+            overflow: hidden !important;
+          }
+
+          .overview-iframe-shell.detail-page-mode
+          #repertoire_iframe {
+            height: 100% !important;
+            min-height: 420px !important;
+            max-height: 100% !important;
+            overflow: auto !important;
+          }
+
+          @media screen and (max-width: 700px) {
+            .overview-iframe-shell {
+              width: calc(100vw - 8px) !important;
+              max-width: calc(100vw - 8px) !important;
+            }
+
+            .overview-iframe-shell.detail-page-mode {
+              height: calc(100vh - 120px) !important;
+              max-height: calc(100vh - 120px) !important;
+            }
+          }
+          "
+        )
+      ),
+
+tags$script(
+  HTML(
+    overview_tooltip_javascript
+  )
+),
+
+div(
+  class = if (is_overview_page) {
+    "overview-iframe-shell overview-page-mode"
+  } else {
+    "overview-iframe-shell detail-page-mode"
+  },
+  
+  tags$iframe(
+    id = "repertoire_iframe",
+    
+    src = iframe_url,
+    
+    scrolling = "yes",
+    
+    onload = iframe_onload,
+    
+    style = paste0(
+      "display:block;",
+      "width:100%;",
+      "max-width:100%;",
       
-      style = paste0(
-        "border:none;",
-        "border-radius:8px;",
-        "box-shadow:0 4px 12px rgba(0,0,0,0.1);",
-        "width:80%;",
-        "margin-left:10%;",
-        "height:1000px;",
-        "zoom:1.2;"
-      )
+      if (is_overview_page) {
+        
+        paste0(
+          "height:calc(100vh - 160px);",
+          "min-height:700px;",
+          "overflow:auto;"
+        )
+        
+      } else {
+        
+        paste0(
+          "height:100%;",
+          "min-height:420px;",
+          "overflow:auto;"
+        )
+      },
+      
+      "margin:0;",
+      "padding:0;",
+      
+      "border:none;",
+      "border-radius:0;",
+      "box-shadow:none;",
+      
+      "box-sizing:border-box;",
+      "background:#ffffff;"
+    )
+  )
+)
     )
   })
+  
+  
   
   # Overview Table 隐藏时暂停 iframe，
   # 避免它在后台和缩略图争抢加载资源
