@@ -19,9 +19,11 @@ body {
 
 /* === 2. 导航栏 (navbar: 70px) === */
 .navbar {
-  background: #2c3e50 !important; border: none !important;
+  background: #2c3e50 !important;
+  border: none !important;
   box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-  margin-bottom: 0; min-height: 60px !important; 
+  margin-bottom: 0;
+  min-height: 76px !important; 
 }
 
 /* 导航链接 (居中对齐) */
@@ -43,37 +45,35 @@ body {
 .navbar-brand {
     display: flex !important;
     align-items: center !important;
-    justify-content: flex-start !important; /* 确保靠左排列 */
+    justify-content: flex-start !important;
     
     padding-left: 15px !important;
+    padding-right: 20px !important;
     margin-left: 0 !important;
-    height: 60px !important;
-    max-width: 70vw !important; /* 最多占据屏幕宽度的 70% */
+    height: 76px !important;
+    max-width: none !important;
     
-    overflow: hidden !important;
+    overflow: visible !important;
     transform: none !important;
 }
 
 /* 3. Logo本体：允许无限缩小 + 靠左对齐 */
 .navbar-brand img {
-    max-height: 50px !important;
-    max-width: 100% !important;
-    width: auto !important;
     height: auto !important;
-    
-    /* 🚨 核心魔法 1：打破图片原始尺寸限制，允许在容器内被极限挤压缩小 */
-    flex-shrink: 1 !important;
+    width: 240px!important;
+    max-height: none !important;
+    max-width: none !important;
+
+    flex-shrink: 0 !important;
     min-width: 0 !important;
-    
-    /* 🚨 核心魔法 2：图片内容等比缩放，且永远锚定在左边 */
+
     object-fit: contain !important;
     object-position: left center !important;
-    
+
     transform: none !important;
     margin: 0 !important;
     padding: 0 !important;
 }
-
 
 /* 鼠标悬停 */
 .navbar-default .navbar-nav > li > a:hover {
@@ -559,7 +559,15 @@ body {
   font-size: 42px;
   font-weight: 800;
   color: #2c3e50;
-  margin-bottom: 15px;
+
+  margin-top: 0;
+  margin-bottom: 8px;
+  padding-bottom: 14px;
+
+  line-height: 1.25;
+  overflow: visible;
+  display: inline-block;
+
   background: linear-gradient(135deg, #3498db 0%, #2ecc71 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -749,4 +757,47 @@ body {
   color: #2c3e50;
   border-bottom: 3px solid #3498db !important;
   background-color: transparent !important;
+}
+
+/* ============================================================
+   Widen navbar row so all tabs can use the full page width
+   ============================================================ */
+
+@media (min-width: 768px) {
+
+  /* Only affect navbar container, not page content containers */
+  .navbar > .container-fluid {
+    max-width: none !important;
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 25px !important;
+    padding-right: 25px !important;
+  }
+
+  .navbar {
+    min-height: 128px !important;
+    overflow: visible !important;
+  }
+
+  .navbar-collapse {
+    overflow: visible !important;
+    max-height: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  
+  .navbar-nav {
+    margin-top: 30px !important;
+  }
+
+  .navbar-nav > li {
+    float: left !important;
+    position: relative !important;
+    clear: none !important;
+  }
+
+  .navbar-nav > li > a {
+    white-space: nowrap !important;
+  }
 }

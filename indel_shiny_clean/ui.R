@@ -79,7 +79,6 @@ ui <- navbarPage(
     ),
     useShinyjs()
   ),
-  
       
       
   

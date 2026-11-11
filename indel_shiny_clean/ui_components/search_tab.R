@@ -4,7 +4,17 @@ create_search_tab <- function(all_sig_names = NULL) {
     icon = icon("search"),
     div(class = "search-page-container",
         div(class = "search-box-large",
-            h1(class = "search-title", "Search Signatures"),
+            h1(
+              class = "search-title",
+              style = paste0(
+                "line-height:1.35 !important;",
+                "padding-bottom:18px !important;",
+                "margin-bottom:4px !important;",
+                "overflow:visible !important;",
+                "display:inline-block !important;"
+              ),
+              "Search Signatures"
+            ),
             # 👇 在这里直接用内联 CSS 把字号放大 (比如 1.8rem)，可以自己微调数字
             p(class = "search-subtitle", 
               style = "font-size: 2.1rem; font-weight: 500; color: #7f8c8d; margin-top: 15px;", 

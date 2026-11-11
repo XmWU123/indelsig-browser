@@ -17,4 +17,6 @@ logs/
 !/README.md
 !/LICENSE
 !/indel-signature-browser.Rproj
-!/indel_shiny_clean/
+!/indel_shiny_clean//indel_shiny_clean/o/
+/indel_shiny_clean/user_feedback/
+/indel_shiny_clean/o/
