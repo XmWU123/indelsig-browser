@@ -15,5 +15,6 @@ logs/
 # 2. 排除掉（即保留）你想要的文件和文件夹
 !/.gitignore
 !/README.md
+!/LICENSE
 !/indel-signature-browser.Rproj
 !/indel_shiny_clean/

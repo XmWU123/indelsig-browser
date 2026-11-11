@@ -101,8 +101,8 @@ The main navigation tabs include:
 To run the Shiny app locally, clone this repository:
 
 ```bash
-git clone https://github.com/XmWU123/indelsig.git
-cd indelsig
+git clone https://github.com/XmWU123/indelsig-browser.git
+cd indelsig-browser
 ```
 
 Then start the Shiny app in R:
@@ -213,7 +213,7 @@ You may also cite this repository:
 
 ```text
 Wu X, Liu M, Rozen SG. indelsig: an interactive browser for indel mutational signatures.
-GitHub repository: https://github.com/XmWU123/indelsig
+GitHub repository: https://github.com/XmWU123/indelsig-browser
 ```
 
 ## Contact
